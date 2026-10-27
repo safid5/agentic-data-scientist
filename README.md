@@ -1,345 +1,120 @@
-# CE888 Agentic Data Scientist - Student Template
+# Offline Agentic Data Scientist
 
-**Assignment:** Offline Agentic AI for Data Science  
-**Module:** CE888  
-**Academic Year:** 2025/2026
+An autonomous, fully offline agent that performs end-to-end classification on a CSV dataset it has never seen. It profiles the data, plans a workflow, trains and evaluates models, reflects on its own results, re-plans if they fall short, and remembers what worked for next time. No LLMs or internet access are needed: all reasoning is rule-based, using heuristics and meta-learning.
 
----
+Built in Python with scikit-learn and pandas for the CE888 module (University of Essex). The starter skeleton came from Sagi Haider (MIT licence, see [Credits](#credits)). The planning logic, reflection, memory, error handling and test suite are my own work.
 
-## Overview
+## How it works
 
-This repository contains the skeleton code for building an **Offline Agentic Data Scientist** - an autonomous agent that performs end-to-end classification tasks without relying on Large Language Models.
-
-Your agent will use **rule-based reasoning, heuristics, and meta-learning** to autonomously:
-- Profile datasets
-- Plan execution workflows
-- Train and evaluate models
-- Reflect on results
-- Learn from experience
-
----
-
-## Quick Start
-
-### 1. Clone this repository
-
-```bash
-git clone https://github.com/sagihaider/ce888-agentic-data-scientist.git
-cd ce888-agentic-data-scientist
+```
+CSV + target (or "auto")
+        |
+        v
+  Profile dataset ──> Check memory for a matching dataset fingerprint
+        |                          |
+        v                          v
+   Plan (template + extras, guided by memory hints)
+        |
+        v
+  Preprocess ──> Select models ──> Train ──> Evaluate vs dummy baseline
+        |
+        v
+     Reflect ──> issues found? ──yes──> Re-plan (up to max_replans) ──┐
+        |                                                             |
+        no <──────────────────────────────────────────────────────────┘
+        |
+        v
+  Save report, metrics, plan, reflection + update memory
 ```
 
-### 2. Set up your environment
+| Component | File | What it does |
+|---|---|---|
+| Executor | `agentic_data_scientist.py` | Runs the loop, handles retries (max 3 per step) and logging, writes outputs |
+| Profiler | `tools/data_profiler.py` | Extracts shape, missing values, feature types, class imbalance, high-cardinality columns and a dataset fingerprint; infers the target when none is given |
+| Planner | `agents/planner.py` | Chooses a plan template from the profile and adds steps such as SMOTE, class weights, regularisation, feature selection and PCA |
+| Reflector | `agents/reflector.py` | Compares the best model with a dummy baseline, checks for overfitting, imbalance and weak per-class performance, computes a trigger score and decides whether to re-plan |
+| Memory | `agents/memory.py` | Stores each run as JSON, finds similar past datasets with a similarity score, and feeds the best-performing steps back into new plans |
+| Modelling / evaluation | `tools/modelling.py`, `tools/evaluation.py` | Pipelines for Logistic Regression, Random Forest, Gradient Boosting and SVM, ranked by balanced accuracy and macro F1 |
+
+**Planning rules.** Fewer than 800 rows uses the small-data template and more than 20,000 uses the large-data template. Class imbalance of 3 or more selects the imbalanced template, or the high-dimensional template (feature selection and PCA) if there are also more than 50 columns. Anything else uses the standard template.
+
+**Reflection and re-planning.** The reflector adds up issues into a trigger score, and a score of 3 or more triggers `apply_replan_strategy()`. Underfitting adds ensemble methods, imbalance adds SMOTE, overfitting adds regularisation and a weak gap to the baseline adds feature engineering. Each change is written into the plan notes so the run stays explainable.
+
+**Metrics.** Models are ranked on balanced accuracy and macro F1 rather than plain accuracy, so minority classes count as much as majority ones.
+
+## Quick start
 
 ```bash
-# Create virtual environment
+git clone https://github.com/safid5/agentic-data-scientist.git
+cd agentic-data-scientist
+
 python -m venv venv
-
-# Activate it
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 3. Test the skeleton
-
-```bash
 python run_agent.py --data data/example_dataset.csv --target auto
 ```
 
-You should see the agent run through the basic pipeline and generate outputs in `outputs/[timestamp]/`
+Options: `--target <column>` or `auto`, `--output_root outputs`, `--seed 42`, `--test_size 0.2`, `--max_replans 1`, `--quiet`.
 
----
+Each run creates a timestamped folder in `outputs/` containing a confusion matrix, a human-readable Markdown report, and JSON files for the EDA, metrics, plan and reflection.
 
-## Project Structure
-
-```
-ce888-agentic-data-scientist/
-
-│
-├── README.md # This file
-├── requirements.txt # Python dependencies
-├── .gitignore # Git ignore rules
-│
-├── agentic_data_scientist.py # Core agent (Executor)
-├── run_agent.py # Entry point
-│
-├── agents/ # Agent components
-│ ├── \__init_\_.py
-│ ├── planner.py
-│ ├── reflector.py
-│ └── memory.py
-│
-├── tools/ # Data science tools
-│ ├── \__init_\_.py
-│ ├── data_profiler.py
-│ ├── modelling.py
-│ └── evaluation.py
-│
-├── data/ # Datasets
-│ ├── README.md # Dataset documentation template
-│ └── example_dataset.csv # Small demo dataset
-│
-├── outputs/ # Generated outputs (gitignore)
-│ └── .gitkeep
-│
-├── report/ # technical report
-│ ├── README.md # Report guidelines
-│ └── REPORT.md
-│
-└── tests/ # Test suite
-├── \__init_\_.py
-└── sanity_check.py # Basic sanity test
-├── test_agentic_ds.py
-├── test_memory.py
-└── test_planner.py
-├── test_profiler.py
-├── test_reflector.py
-└── test_smoke_run.py
-└── conftest.py
-```
-
----
-
-## What You Need To Do
-
-### Core Tasks (Mandatory)
-
-1. **Extend the Planner Agent** (`agents/planner.py`)
-   - Implement sophisticated planning logic based on dataset characteristics
-   - Create different plan templates for different scenarios
-   - Use memory hints to guide planning
-   - Handle edge cases (small datasets, high imbalance, etc.)
-
-2. **Extend the Reflector Agent** (`agents/reflector.py`)
-   - Implement deep performance analysis
-   - Add statistical significance testing
-   - Generate actionable improvement suggestions
-   - Implement smart replanning decisions
-
-3. **Enhance the Executor** (`agentic_data_scientist.py`)
-   - Add robust error handling
-   - Implement retry logic
-   - Add detailed logging
-   - Support conditional execution based on plans
-
-4. **Improve the Memory System** (`agents/memory.py`)
-   - Add similarity-based retrieval
-   - Implement richer experience storage
-   - Enable learning from past executions
-
-### Evaluation & Reporting
-
-- Test on **at least 3 diverse classification datasets**
-- Write a **3000-4000 word technical report** in `report/REPORT.md`
-- Create comprehensive tests with >60% coverage
-- Document all datasets in `data/README.md`
-
----
-
-## Running the Agent
-
-### Basic Usage
+Run the tests with:
 
 ```bash
-python run_agent.py --data data/example_dataset.csv --target auto
+pytest -q
 ```
 
-### Custom Parameters
+Tests cover the memory, planner, profiler, reflector, a full smoke run and the executor. CI runs them on every push (Python 3.11).
 
-```bash
-python run_agent.py \
-    --data data/your_dataset.csv \
-    --target target_column_name \
-    --output_root my_outputs \
-    --seed 42 \
-    --test_size 0.2 \
-    --max_replans 2
+## Results
+
+I tested the agent on seven datasets. The full write-up is in [`report/REPORT.md`](report/REPORT.md). Only the small demo datasets are included here; the others are linked below.
+
+| Dataset | Rows | Target | Best model | Balanced acc. | Macro F1 | Re-plan recommended |
+|---|---|---|---|---|---|---|
+| Example (module demo) | 20 | `label` (auto) | Logistic Regression | 1.00 | 1.00 | No |
+| [Smartphone usage](https://www.kaggle.com/datasets/jimarahman/smartphone-usage-and-addiction-analysis-dataset) | 7,500 | Addicted label (auto) | Gradient Boosting | 1.00 | 1.00 | No |
+| [Songs](https://www.kaggle.com/datasets/moonknightmarvel/dataset-of-songs-with-genreartistmovielanguage) | 101 | `language` | Random Forest | 0.667 | 0.708 | Yes |
+| Songs | 101 | `emotion` | Logistic Regression | 0.196 | 0.187 | Yes |
+| [Most viewed videos](https://www.kaggle.com/datasets/mubashirsidiki/most-watched-yt-videos-rankings-2026) | 1,000 | `content_type` | SVC (RBF) | 0.336 | 0.332 | Yes |
+
+**What the results show**
+
+- **The pipeline works end to end.** On the demo data it profiles, plans, trains, reflects and writes a report with no manual steps.
+- **Target quality drives everything.** Predicting song `language` (few, distinct classes) worked far better than `emotion`. In both cases the reflector correctly flagged weak results and recommended re-planning.
+- **Perfect scores are a warning, not a win.** The 1.00 on the smartphone dataset most likely reflects a target almost perfectly determined by other columns (possible leakage), not a strong model.
+- **Failures are documented.** With `rank` (videos) as the target the best model was just the dummy baseline, because there was no learnable signal. With country (world happiness) as the target, the very high number of unique values made the agent abort. The sales and wine-quality datasets (provided by the module) produced empty outputs because target inference failed on them.
+
+## Limitations and next steps
+
+- **No validation of the target.** The agent cannot tell whether a chosen column makes sense as a classification label, which was the main weakness found in testing.
+- **Target inference is narrow.** `infer_target_column()` recognises only a handful of column-name patterns and otherwise falls back to the last column.
+- **Default hyperparameters.** Models are not tuned, and re-planning does not tune them either, so the system is not competitive with AutoML tools.
+- **Fixed thresholds.** Template and trigger thresholds are hard-coded, so a borderline dataset (for example 802 rows) gets the standard template rather than the small one. There is no statistical testing or uncertainty estimation.
+- **Simple memory similarity.** The dataset similarity score uses four dimensions only.
+- **Planned improvements:** significance tests (t-test or Wilcoxon) when comparing models, richer similarity using feature distributions and PCA embeddings, hyperparameter search inside re-planning, and a check for suspiciously perfect scores.
+
+## Project structure
+
+```
+agentic-data-scientist/
+├── agentic_data_scientist.py   # Executor
+├── run_agent.py                # CLI entry point
+├── agents/                     # planner, reflector, memory
+├── tools/                      # data_profiler, modelling, evaluation
+├── data/                       # small demo datasets
+├── report/REPORT.md            # Technical report
+├── tests/                      # Unit, smoke and sanity tests
+└── .github/workflows/ci.yml    # CI: runs pytest
 ```
 
-### Arguments
+## Ethics
 
-- `--data`: Path to CSV dataset (required)
-- `--target`: Target column name or 'auto' for automatic detection (required)
-- `--output_root`: Output directory (default: 'outputs')
-- `--seed`: Random seed for reproducibility (default: 42)
-- `--test_size`: Test set fraction (default: 0.2)
-- `--max_replans`: Maximum replanning attempts (default: 1)
-- `--quiet`: Reduce logging output
+Results are decision support, not ground truth: the system relies on heuristics, and its preprocessing choices should be reviewed before use in sensitive domains. Memory stores only dataset fingerprints and performance summaries, but users should still make sure columns and metadata contain no sensitive information.
 
----
+## Credits
 
-## Testing
+Starter skeleton and assignment brief by the CE888 professor Sagi Haider, released under the MIT licence (see `LICENSE`). Datasets as linked above. All other code, tests and the report are my own.
 
-Run the sanity check:
-
-```bash
-python tests/sanity_check.py
-```
-
-Run all tests (once you add them):
-
-```bash
-pytest tests/
-```
-
-With coverage:
-
-```bash
-pytest --cov=agents --cov=tools --cov-report=html tests/
-```
-
----
-
-## Expected Output
-
-After running the agent, check `outputs/[timestamp]/` for:
-
-- `report.md` - Human-readable summary report
-- `eda_summary.json` - Dataset profile and characteristics
-- `plan.json` - Generated execution plan
-- `metrics.json` - Model performance metrics
-- `reflection.json` - Agent's self-assessment and suggestions
-- `confusion_matrix.png` - Confusion matrix visualization
-
----
-
-## Development Workflow
-
-1. **Week 1-2:** Understand the skeleton, run basic examples
-2. **Week 3-4:** Extend Planner and Reflector with sophisticated logic
-3. **Week 5-7:** Implement 3+ advanced features
-4. **Week 8:** Add comprehensive tests and documentation
-5. **Week 9:** Write technical report and prepare demo
-
----
-
-## System Architecture
-
-- The profiler extracts dataset signals.
-- The planner uses those signals to generate a conditional execution plan.
-- The executor runs the plan with retry logic.
-- The reflector evaluates results and computes a trigger score.
-- The memory system keeps experience across runs.
-
----
-
-## How Planning is implemented
-
-The create_plan() function in agents/planner.py selects from five templates based on row count, column count,
-and imbalance ratio, then conditionally inserts steps like SMOTE, class weights, missing data handlers,
-and memory-guided model prioritisation based on the dataset profile.
-
----
-
-## How Reflection is implemented
-
-The reflect() function in agents/reflector.py computes a trigger score by checking F1 against an adaptive threshold,
-comparing against the dummy baseline, detecting overfitting via train/test gap, and
-analysing per-class performance and precision-recall tradeoff. If the trigger score reaches 3 and up,
-the apply_replan_strategy() function modifies the plan by inserting regularisation, SMOTE, feature engineering or
-ensemble methods depending on which issues were found.
-
----
-
-## How Memory is implemented
-
-The JSONMemory class in agents/memory.py creates a JSON file keyed by dataset fingerprint. Each record stores
-the dataset summary, best model, metrics, plan used, reflection status, and failed steps. On new runs,
-get_hint_for_profile() computes a similarity score across four dimensions (row count, column count,
-imbalance ratio, missing percentage) and returns a hint if a similar past dataset scores above 0.6,
-which the planner uses to prioritise the previously successful model.
-
----
-
-## Key Files to Modify
-
-### High Priority (Must Extend)
-- `agents/planner.py` - Your planning logic
-- `agents/reflector.py` - Your reflection logic
-- `agentic_data_scientist.py` - Enhanced executor
-
-### Medium Priority (Should Extend)
-- `agents/memory.py` - Richer memory system
-- `tools/modelling.py` - Additional models or strategies
-- `tests/test_*.py` - Your test cases
-
-### Low Priority (Optional Extensions)
-- `tools/data_profiler.py` - Additional profiling features
-- `tools/evaluation.py` - More evaluation metrics
-- New tool files for advanced features
-
----
-
-## Submission Checklist
-
-Before submitting, ensure:
-
-- [x] All code runs without errors
-- [ ] README.md updated with your modifications
-- [x] requirements.txt includes any new dependencies
-- [x] At least 3 test datasets documented in `data/README.md`
-- [x] Technical report completed (3000-4000 words)
-- [x] Test coverage >60%
-- [x] All core components extended significantly
-- [x] At least 3 advanced features implemented
-- [x] GitHub repository is clean and organised
-
----
-
-## Getting Help
-
-- **Lectures:** All the lectures and labs are important. Each session will enhance your knowledge. 
-- **Office Hours:** 9-10 am (Monday and Friday)
-- **Forum:** Moodle discussion board - for clarifications (no code sharing)
-
----
-
-## Important Deadlines
-
-- **Data Exploration**. Deadline:  16-Feb-2026 13:59:59
-- **Final Project Demonstration**. Deadline:  21-Apr-2026 13:59:59
-- **Final Project Code**. Deadline:  21-Apr-2026 13:59:59
-
----
-
-## Academic Integrity
-
-- This is **individual work** - no code sharing with classmates
-- You may use standard libraries and consult documentation
-- AI assistance is allowed but must be disclosed in your report
-- Cite any code adapted from external sources
-- Plagiarism will result in severe penalties
-
----
-
-## Resources
-
-- **Scikit-learn:** https://scikit-learn.org/stable/
-- **Pandas:** https://pandas.pydata.org/docs/
-- **Assignment Brief:** See Moodle for full details
-- **Dataset Sources:**
-  - Kaggle: https://www.kaggle.com/datasets
-  - UCI ML Repository: https://archive.ics.uci.edu/ml
-  - OpenML: https://www.openml.org/
-
----
-
-## Contact
-
-**Module Leader:** Dr Haider Raza  
-
-**Email:** use my essex email address
-
-**Office Hours:** Monday and Friday 9-10 AM. 
-
----
-
-## Release & License
-
-- **License:** This project is released under the **MIT License** by default. See `LICENSE` for full terms. If you'd prefer a different license (e.g., Apache-2.0, CC-BY), replace `LICENSE` accordingly before publishing.
-
-**Good luck with your assignment! Build something you're proud of!** 🚀
+Safiya Dikko · [LinkedIn](https://linkedin.com/in/safiya-dikko)
